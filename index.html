@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>EaselJS Example</title>
+	<link rel="stylesheet" type="text/css" href="css/examples.css" />
+	<link rel="stylesheet" type="text/css" href="css/shared.css" />
+	<script src="js/easeljs-0.8.1.min.js"></script>
+	<script src="js/keymaster.js"></script>
+	<!--<script src="js/main.js"></script>-->
+	<script>
+
+	var stage;
+	var text;
+	var player;
+	var player_direction;
+	var down_animation;
+	var up_animation;
+	var right_animation;
+	var left_animation;
+
+	var mapLoadStatus = false;
+	var charLoadStatus = false;
+	
+	var PLAYER_SPEED = 0.1;
+	var TILE_DIMENSION = 32; // Width and height of each tile.
+	var PLAYER_DIMENSION = 32;
+	var WALL_TILES = [0, 1, 2, 8, 9, 10, 16, 17, 18, 19, 20, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47];
+	
+	function init() {
+		// create a new stage and point it at our canvas:
+		stage = new createjs.Stage("testCanvas");
+		
+		// load the spritesheet image:
+		var image = new Image();
+		image.onload = loadMap; // as soon as the image loads, call handleLoad function
+		image.src = "assets/tmw_desert_spacing.png";
+
+		var char_image = new Image();
+		char_image.onload = loadPlayer;
+		char_image.src = "assets/animated_sprite_sheet.png"; 
+
+		// define some text
+		text = new createjs.Text("GAME!!", "20px Arial", "#FFFFFF");
+		text.x = 40;
+		text.y = 30;
+		//text.textBaseline = "top";
+		stage.addChild(text);
+		
+	}
+
+	function loadingComplete() {
+		if (mapLoadStatus && charLoadStatus) {
+			startGame();
+		}
+	}
+
+	function startGame() {
+		// update the stage to draw to screen: (think of this as a "draw" function)
+		stage.update();
+
+		//update the game for each new frame
+		createjs.Ticker.on("tick", tick);
+		createjs.Ticker.setFPS(24);
+	}
+	
+	function loadMap(evt) {
+		// define the spritesheet:
+		var ss = new createjs.SpriteSheet({
+			images: [evt.target],
+			frames: {width:TILE_DIMENSION, height:TILE_DIMENSION, regX:0, regY:0, spacing:1, margin:1}
+		});
+
+		// define a tile map:
+		var map = [
+			[ 0,  1,  1,  1,  1,  1,  1,  1,  1,  2, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 38, 29, 29, 29],
+			[ 8,  9,  9,  9,  9,  9,  9,  9,  9, 10, 29, 29, 29, 29, 30, 29, 29, 30, 29, 38, 29, 29, 31, 29, 29],
+			[ 8,  9,  9, 19, 17, 17, 20,  9,  9, 10, 38, 29, 29, 46, 29, 29, 29, 29, 29, 29, 29, 46, 29, 29, 38],
+			[16, 17, 17, 18, 29, 29, 16, 17, 17, 18, 29, 38, 29, 29, 31, 29, 38, 29, 29, 30, 29, 29, 29, 31, 29],
+			[29, 29, 30, 29,  5,  7, 45, 29, 38, 29, 29, 29, 29, 29, 29, 29, 29, 46, 29, 29, 29, 24, 25, 25, 26],
+			[29, 29, 38, 31, 13, 15, 29, 29, 29, 29, 38, 29, 29, 29, 29, 29, 30, 29, 29, 29, 29, 32, 33, 33, 34],
+			[29, 29, 29, 29, 13, 15, 46, 29, 30, 29, 29, 29, 29, 38, 29, 38, 29, 29, 29, 29, 46, 40, 36, 33, 34],
+			[38, 29, 46, 30, 13, 15, 29, 38, 29, 29, 38, 29, 29, 29, 29, 29, 38,  5,  6,  6,  7, 29, 32, 33, 34],
+			[29, 29, 29, 29, 13, 15, 29, 46, 31, 29, 29, 29, 29, 46, 29, 29, 29, 13,  3, 22, 23, 29, 32, 33, 34],
+			[29, 29, 38, 29, 13, 15, 29, 29, 38, 29, 46, 29, 29, 29, 29, 46, 29, 13, 15, 29, 29, 24, 44, 33, 34],
+			[38, 29, 29, 38, 13, 11,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6, 12, 15, 29, 45, 32, 33, 33, 34],
+			[29, 31, 29, 29, 21, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 23, 38, 29, 40, 41, 41, 42],
+			[29, 29, 29, 38, 29, 29, 29, 31, 29, 29, 29, 29, 29, 31, 46, 29, 29, 46, 29, 29, 29, 29, 29, 29, 29]
+		]
+		
+		// draw the map:
+		
+		// first create a container that we'll add all the map tiles to
+		var map_container = new createjs.Container();
+		
+		for (var row=0; row<map.length; row++) {
+			for (var col=0; col<map[0].length; col++) {
+				
+				// specifies the frame to display
+				var idx = map[row][col]; 
+
+				var tile = new createjs.Sprite(ss);
+				tile.gotoAndStop(idx);
+				//tile.play();
+				tile.x = TILE_DIMENSION*col;
+				tile.y = TILE_DIMENSION*row;
+				map_container.addChild(tile);
+				
+				/*text = new createjs.Text(idx.toString(), "12px Arial", "#ff0000");
+				text.x = TILE_DIMENSION*col;
+				text.y = TILE_DIMENSION*row;
+				//text.textBaseline = "top";
+				map_container.addChild(text);*/
+			}
+		}
+		
+		// next add the map container to the stage at index 0
+		stage.addChildAt(map_container, 0);
+		
+		// done!
+		mapLoadStatus = true;
+		console.log('Map loaded');
+		loadingComplete();
+
+	}
+
+	function loadPlayer(evt) {
+		var char_ss = new createjs.SpriteSheet({
+			images: [evt.target],
+			frames: {width:PLAYER_DIMENSION, height:PLAYER_DIMENSION, regX:0, regY:0, spacing:0, margin:0},
+			animations: {
+				down:[0,4,'down',0.5],
+				up:[10,14,'up',0.5],
+				left:[5,9,'left',0.5],
+				right:[15,19,'right',0.5]
+			}
+		});
+
+		// define the player
+
+		/*player = new createjs.Shape();
+		player.graphics.beginFill("magenta").drawCircle(0, 0, 10); */
+		player = new createjs.Sprite(char_ss);
+		player.gotoAndStop(0);
+		
+		player.x = 135;
+		player.y = 135;
+		player.name == "player";
+		
+		// add the player to the stage at index 1 (so it's always above the map)
+		stage.addChildAt(player, 1);
+		
+		charLoadStatus = true;
+		console.log('Player loaded');
+		loadingComplete();
+	}
+	
+	function handleKeyPress(key_pressed, event) {
+		movePlayer(key_pressed, event.delta);
+		if (player_direction != key_pressed) {
+			player.gotoAndPlay(key_pressed);
+			player_direction = key_pressed;
+		}
+		return;
+	}
+
+	function tick(event) {
+		
+		if (key.isPressed('up') || key.isPressed('w')) {
+			handleKeyPress('up', event);
+		}
+		else if (key.isPressed('down') || key.isPressed('s')) {
+			handleKeyPress('down', event);
+		}
+		else if (key.isPressed('left') || key.isPressed('a')) {
+			handleKeyPress('left', event);
+		}
+		else if (key.isPressed('right') || key.isPressed('d')) {
+			handleKeyPress('right', event);
+		} else {
+			player.stop();
+			player_direction = 'none';
+		}
+		stage.update(event);
+	}
+
+	function movePlayer(dir, delta) {
+		// look at the direction, and for each case, treat accordingly
+		switch(dir) {
+			case 'up':
+				// np = "new position" -- what are the new coordinates of the player going to be, if we allow them to continue moving in this direction?
+
+				var np_x = player.x; // x will not change when we move up or down
+				var np_y = player.y - (delta * PLAYER_SPEED); 
+				
+				if (!collision(np_x, np_y)) { 
+					player.y = np_y; // allow this movement to happen
+				}
+				
+				 
+				break; // we're done with this case
+			case 'down':
+				var np_x = player.x;
+				var np_y = player.y + (delta * PLAYER_SPEED);
+				
+				if (!collision(np_x, np_y)) {
+					player.y = np_y;
+				}
+				
+				break;
+			case 'left':
+				var np_x = player.x - (delta * PLAYER_SPEED);
+				var np_y = player.y;
+				
+				if (!collision(np_x, np_y)) {
+					player.x = np_x;
+				}
+
+				break;
+			case 'right':
+				var np_x = player.x + (delta * PLAYER_SPEED);
+				var np_y = player.y;
+				
+				if (!collision(np_x, np_y)) {
+					player.x = np_x;
+				}
+				
+				break;
+			default:
+				//Don't need to do anything
+		}
+	}
+	
+
+	function collision(new_position_x, new_position_y) {
+	
+		// Get all objects under the point where the player is going.
+		// We add PLAYER_DIMENSION/2 in both x and y. This is because the player's x and y position are at his top left corner, but we want to check collisions at the midpoint.
+		var tiles = stage.getObjectsUnderPoint(new_position_x + PLAYER_DIMENSION/2, new_position_y + PLAYER_DIMENSION/2, 0);
+		
+		// Of the returned tiles, choose the last one that isn't the player.
+		var tile = tiles[0];
+		var tile_found = false;
+		for (var t = 0; t < tiles.length; t++) {
+			if (tile.name != "player") {
+				tile = tiles[t];
+			}
+		}
+		var tile_id = tile.currentFrame;
+		
+		
+		// If the tile we're going to hit is a wall tile...
+		if (WALL_TILES.indexOf(tile_id) != -1) {
+
+			if (tile_id == 46) { // 46 is the small bush
+				tile.gotoAndStop(47); // when I hit the brown bush, turn it to green
+			}
+			else if (tile_id == 38) { // 38 is the large brown bush
+				tile.gotoAndStop(39);
+			}
+			return true;
+		}
+		else {
+			return false;
+		}
+
+	}
+
+
+	</script>
+
+</head>
+
+<body onload="init();">
+	<canvas id="testCanvas" width="800" height="415">
+	</canvas>
+</body>
+
+</html>

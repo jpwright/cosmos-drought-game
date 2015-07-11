@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>EaselJS Example</title>
+	<link rel="stylesheet" type="text/css" href="css/examples.css" />
+	<link rel="stylesheet" type="text/css" href="css/shared.css" />
+	<script src="js/easeljs-0.8.1.min.js"></script>
+	<script src="js/keymaster.js"></script>
+	<!--<script src="js/main.js"></script>-->
+	<script>
+
+	var stage;
+	var text;
+	var player;
+	
+	var PLAYER_SPEED = 0.1;
+	var TILE_DIMENSION = 32; // Width and height of each tile.
+	var WALL_TILES = [0, 1, 2, 8, 9, 10, 16, 17, 18, 19, 20, 30, 31, 38, 39, 45, 46, 47];
+	
+	function init() {
+		// create a new stage and point it at our canvas:
+		stage = new createjs.Stage("testCanvas");
+		
+		// load the spritesheet image:
+		var image = new Image();
+		image.onload = handleLoad; // as soon as the image loads, call handleLoad function
+		image.src = "assets/tmw_desert_spacing.png";
+	}
+	
+	function handleLoad(evt) {
+		// define the spritesheet:
+		var ss = new createjs.SpriteSheet({
+				images: [evt.target],
+				frames: {width:TILE_DIMENSION, height:TILE_DIMENSION, regX:0, regY:0, spacing:1, margin:1}
+			});
+
+		// define a tile map:
+		var map = [
+			[ 0,  1,  1,  1,  1,  1,  1,  1,  1,  2, 29, 29],
+			[ 8,  9,  9,  9,  9,  9,  9,  9,  9, 10, 29, 29],
+			[ 8,  9,  9, 19, 17, 17, 20,  9,  9, 10, 38, 29],
+			[16, 17, 17, 18, 29, 29, 16, 17, 17, 18, 29, 38],
+			[29, 29, 30, 29,  5,  7, 45, 29, 38, 29, 29, 29],
+			[29, 29, 38, 31, 13, 15, 29, 29, 29, 29, 38, 29],
+			[29, 29, 29, 29, 13, 15, 46, 29, 30, 29, 29, 29],
+			[38, 29, 46, 30, 13, 15, 29, 38, 29, 29, 38, 29],
+			[29, 29, 29, 29, 13, 15, 29, 46, 31, 29, 29, 29],
+			[29, 29, 38, 29, 13, 15, 29, 29, 38, 29, 46, 29],
+			[38, 29, 29, 38, 13, 11,  6,  6,  6,  6,  6,  6],
+			[29, 31, 29, 29, 21, 22, 22, 22, 22, 22, 22, 22],
+			[29, 29, 29, 38, 29, 29, 29, 31, 29, 29, 29, 29]
+		]
+		
+		// draw the map:
+		for (var row=0; row<map.length; row++) {
+			for (var col=0; col<map[0].length; col++) {
+				
+				// specifies the frame to display
+				var idx = map[row][col]; 
+
+				var tile = new createjs.Sprite(ss);
+				tile.gotoAndStop(idx);
+				//tile.play();
+				tile.x = TILE_DIMENSION*col;
+				tile.y = TILE_DIMENSION*row;
+				stage.addChild(tile);
+			}
+		}
+		
+		// define the player (a red circle)
+		player = new createjs.Shape();
+		player.graphics.beginFill("red").drawCircle(0, 0, 10);
+		player.x = 135;
+		player.y = 135;
+		stage.addChild(player);
+
+		text = new createjs.Text("Drought Game", "20px Arial", "#FFFFFF");
+		text.x = 45;
+		text.y = 40;
+		text.textBaseline = "top";
+		stage.addChild(text);
+		
+		// update the stage to draw to screen: (think of this as a "draw" function)
+		stage.update();
+		
+		// update the game for each new frame
+		createjs.Ticker.on("tick", tick);
+		createjs.Ticker.setFPS(24);
+
+	}
+
+	// any time you have a function that's an event handler, you need to pass the event as an argument because the behavior of the handler will depend on the event ("What happened in that event?" "I need to respond to it now...")
+
+	function tick (event) {
+		if (key.isPressed('up') || key.isPressed('w')) {
+		    movePlayer('up', event.delta);
+		    // event.delta is the time (in milliseconds) elapsed since the previous frame.
+
+		    // What causes lag? The game tries to run at a frame rate, but for whatever reason, it can be variable. You want your animation to take this lag possibility into account. 
+
+		    // You want your animation to be synced to real time -- this is the real value of the framerate, not the theoretical framerate
+		}
+		if (key.isPressed('down') || key.isPressed('s')) {
+		    movePlayer('down', event.delta);
+		}
+		if (key.isPressed('left') || key.isPressed('a')) {
+		    movePlayer('left', event.delta);
+		}
+		if (key.isPressed('right') || key.isPressed('d')) {
+		    movePlayer('right', event.delta);
+		}
+		stage.update(event); // redraw the stage with new movements added
+	}
+
+	function movePlayer(dir, delta) {
+		// look at the direction, and for each case, treat accordingly
+		switch(dir) {
+			case 'up':
+				// np = "new position" -- what are the new coordinates of the player going to be, if we allow them to continue moving in this direction?
+
+				var np_x = player.x; // x will not change when we move up or down
+				var np_y = player.y - (delta * PLAYER_SPEED); // y will decrease as you move up -- delta is in milliseconds, and player speed is basically pixels per millisecond -- if you multiply them, you get pixels (shift the y position by a number of pixels)
+				
+				if (!collision(np_x, np_y)) { // if the new position is not inside an object
+				  player.y = np_y; // allow this movement to happen
+				}
+				break; // we're done with this case
+			case 'down':
+				var np_x = player.x;
+				var np_y = player.y + (delta * PLAYER_SPEED);
+				if (!collision(np_x, np_y)) {
+				  player.y = np_y;
+				}
+				break;
+			case 'left':
+				var np_x = player.x - (delta * PLAYER_SPEED);
+				var np_y = player.y;
+				if (!collision(np_x, np_y)) {
+				  player.x = np_x;
+				}
+				break;
+			case 'right':
+				var np_x = player.x + (delta * PLAYER_SPEED);
+				var np_y = player.y;
+				if (!collision(np_x, np_y)) {
+				  player.x = np_x;
+				}
+				break;
+			default:
+				//Don't need to do anything
+		}
+	}
+	
+	// new position x and new position y is where the player wants to go
+	function collision(new_position_x, new_position_y) {
+	
+		// give us an array of the objects on the stage that fall within these particular coordinates, and give us the one immediately below the player -- the player would be [0], but the tile directly underneath would be [1]
+		var tile = stage.getObjectsUnderPoint(new_position_x, new_position_y, 0)[1]
+		var tile_id = tile.currentFrame;
+		
+		if (WALL_TILES.indexOf(tile_id) != -1) {
+		
+			// If tile_id is in WALL_TILES, a collision has happened, and we enter this block
+			// If tile_id is not in WALL_TILES, indexOf() returns -1, and a collision hasn't happened
+			
+			if(tile_id == 46) {
+				// Small Bush
+				tile.gotoAndStop(47);
+			} else if (tile_id == 38) {
+				// Large Bush
+				tile.gotoAndStop(39);
+			}
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	</script>
+
+</head>
+
+<body onload="init();">
+	<canvas id="testCanvas" width="800" height="415">
+	</canvas>
+</body>
+
+</html>
