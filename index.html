@@ -17,6 +17,7 @@
 	var up_animation;
 	var right_animation;
 	var left_animation;
+	var plantsQueue = [];
 
 	var mapLoadStatus = false;
 	var charLoadStatus = false;
@@ -61,6 +62,8 @@
 		//update the game for each new frame
 		createjs.Ticker.on("tick", tick);
 		createjs.Ticker.setFPS(24);
+
+		brownPlants();
 	}
 	
 	function loadMap(evt) {
@@ -105,7 +108,9 @@
 				tile.y = TILE_DIMENSION*row;
 				map_container.addChild(tile);
 				
-				/*text = new createjs.Text(idx.toString(), "12px Arial", "#ff0000");
+				/*
+				==== DEBUG ====
+				text = new createjs.Text(idx.toString(), "12px Arial", "#ff0000");
 				text.x = TILE_DIMENSION*col;
 				text.y = TILE_DIMENSION*row;
 				//text.textBaseline = "top";
@@ -176,7 +181,8 @@
 		}
 		else if (key.isPressed('right') || key.isPressed('d')) {
 			handleKeyPress('right', event);
-		} else {
+		} 
+		else {
 			player.stop();
 			player_direction = 'none';
 		}
@@ -239,7 +245,6 @@
 		
 		// Of the returned tiles, choose the last one that isn't the player.
 		var tile = tiles[0];
-		var tile_found = false;
 		for (var t = 0; t < tiles.length; t++) {
 			if (tile.name != "player") {
 				tile = tiles[t];
@@ -253,9 +258,11 @@
 
 			if (tile_id == 46) { // 46 is the small bush
 				tile.gotoAndStop(47); // when I hit the brown bush, turn it to green
+				plantsQueue.push(tile);
 			}
 			else if (tile_id == 38) { // 38 is the large brown bush
 				tile.gotoAndStop(39);
+				plantsQueue.push(tile);
 			}
 			return true;
 		}
@@ -263,6 +270,22 @@
 			return false;
 		}
 
+	}
+
+	function brownPlants() {
+		console.log("entered brown plants");
+		var plant = plantsQueue.shift();
+
+		if (plant) {
+			var plant_id = plant.currentFrame;
+			if (plant_id == 47){
+				plant.gotoAndStop(46);
+			}
+			else if (plant_id == 39) {
+				plant.gotoAndStop(38);
+			}
+		}
+		setTimeout(brownPlants, (Math.random()*5000)+10000);	
 	}
 
 
