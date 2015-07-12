@@ -15,6 +15,7 @@
 	
 	var char_ss;
 	var me;
+	var my_id;
 	var my_direction;
 	
 	var other_players = {};
@@ -42,7 +43,7 @@
 
 		var char_image = new Image();
 		char_image.onload = loadPlayer;
-		char_image.src = "assets/animated_sprite_sheet.png"; 
+		char_image.src = "assets/animated_sprite_sheet2.png"; 
 
 		// define some text
 		text = new createjs.Text("GAME!!", "20px Arial", "#FFFFFF");
@@ -53,13 +54,27 @@
 		
 		// nodejs socket initialization
 		socket = io();
-		socket.on('new-player', function(msg) {
-			console.log('new player with id '+msg['id']);
-			var new_player = newPlayer(msg['name']);
+		socket.on('your-id', function(msg) {
+			console.log('my unique id is '+msg['id']);
+			my_id = msg['id'];
+		});
+		socket.on('existing-player', function(msg) {
+			console.log('existing player with id '+msg['id']);
+			var new_player = newPlayer(msg['name'], msg.position);
 			other_players[msg['id']] = {name: msg['name'], key: 'none', direction: 'none', object: new_player};
 		});
+		socket.on('new-player', function(msg) {
+			if (msg['id'] != my_id) {
+				console.log('new player with id '+msg['id']);
+				var new_player = newPlayer(msg['name'], msg.position);
+				other_players[msg['id']] = {name: msg['name'], key: 'none', direction: 'none', object: new_player};
+			}
+		});
 		socket.on('player-move', function(msg) {
-			other_players[msg['id']]['key'] = msg['key'];
+			if (msg['id'] != my_id) {
+				handleOthersKeyPress(msg['id'], other_players[msg['id']]['direction'], msg['dir'], msg['delta']);
+				other_players[msg['id']]['direction'] = msg['dir'];
+			}
 			
 		});
 		
@@ -171,12 +186,12 @@
 		loadingComplete();
 	}
 	
-	function newPlayer(name) {
+	function newPlayer(name, position) {
 		var new_player = new createjs.Sprite(char_ss);
 		new_player.gotoAndStop(0);
 		
-		new_player.x = 135;
-		new_player.y = 135;
+		new_player.x = position.x;
+		new_player.y = position.y;
 		new_player.name == "player";
 		stage.addChildAt(new_player, 1);
 		
@@ -185,7 +200,7 @@
 	
 	function handleMyKeyPress(key_pressed, event) {
 	
-		socket.emit('key', {dir: key_pressed});
+		socket.emit('key', {dir: key_pressed, delta: event.delta, x: me.x, y: me.y});
 	
 		movePlayer(me, key_pressed, event.delta);
 		if (my_direction != key_pressed) {
@@ -195,9 +210,15 @@
 		return;
 	}
 	
-	function handleOthersKeyPress(id, key_pressed, event) {
-		var player = other_players[id]['player'];
-		movePlayer(player, key_pressed, event.delta);
+	function handleOthersKeyPress(id, direction, key_pressed, delta) {
+		var player = other_players[id]['object'];
+		movePlayer(player, key_pressed, delta);
+		if (direction != key_pressed) {
+			player.gotoAndPlay(key_pressed);
+		}
+		if (key_pressed == 'none') {
+			player.stop();
+		}
 	}
 
 	function tick(event) {
@@ -216,8 +237,12 @@
 			handleMyKeyPress('right', event);
 		} else {
 			me.stop();
-			my_direction = 'none';
+			if (my_direction != 'none') {
+				socket.emit('key', {dir: 'none', delta: event.delta, position: {x: me.x, y: me.y}});
+				my_direction = 'none';
+			}
 		}
+		
 		stage.update(event);
 	}
 
