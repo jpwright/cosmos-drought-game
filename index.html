@@ -6,21 +6,27 @@
 	<link rel="stylesheet" type="text/css" href="css/shared.css" />
 	<script src="js/easeljs-0.8.1.min.js"></script>
 	<script src="js/keymaster.js"></script>
+	<script src="/socket.io/socket.io.js"></script>
 	<!--<script src="js/main.js"></script>-->
 	<script>
 
 	var stage;
 	var text;
-	var player;
-	var player_direction;
-	var down_animation;
-	var up_animation;
-	var right_animation;
-	var left_animation;
+	
+	var char_ss;
+	var me;
+	var my_id;
+	var my_direction;
+	
+	var other_players = {};
+	
+	var map_container;
 	var plantsQueue = [];
 
 	var mapLoadStatus = false;
 	var charLoadStatus = false;
+	
+	var socket;
 	
 	var PLAYER_SPEED = 0.1;
 	var TILE_DIMENSION = 32; // Width and height of each tile.
@@ -46,6 +52,32 @@
 		text.y = 30;
 		//text.textBaseline = "top";
 		stage.addChild(text);
+		
+		// nodejs socket initialization
+		socket = io();
+		socket.on('your-id', function(msg) {
+			console.log('my unique id is '+msg['id']);
+			my_id = msg['id'];
+		});
+		socket.on('existing-player', function(msg) {
+			console.log('existing player with id '+msg['id']);
+			var new_player = newPlayer(msg['name'], msg.position);
+			other_players[msg['id']] = {name: msg['name'], key: 'none', direction: 'none', object: new_player};
+		});
+		socket.on('new-player', function(msg) {
+			if (msg['id'] != my_id) {
+				console.log('new player with id '+msg['id']);
+				var new_player = newPlayer(msg['name'], msg.position);
+				other_players[msg['id']] = {name: msg['name'], key: 'none', direction: 'none', object: new_player};
+			}
+		});
+		socket.on('player-move', function(msg) {
+			if (msg['id'] != my_id) {
+				handleOthersKeyPress(msg['id'], other_players[msg['id']]['direction'], msg['dir'], msg['delta']);
+				other_players[msg['id']]['direction'] = msg['dir'];
+			}
+			
+		});
 		
 	}
 
@@ -93,7 +125,7 @@
 		// draw the map:
 		
 		// first create a container that we'll add all the map tiles to
-		var map_container = new createjs.Container();
+		map_container = new createjs.Container();
 		
 		for (var row=0; row<map.length; row++) {
 			for (var col=0; col<map[0].length; col++) {
@@ -129,7 +161,7 @@
 	}
 
 	function loadPlayer(evt) {
-		var char_ss = new createjs.SpriteSheet({
+		char_ss = new createjs.SpriteSheet({
 			images: [evt.target],
 			frames: {width:PLAYER_DIMENSION, height:PLAYER_DIMENSION, regX:0, regY:0, spacing:0, margin:0},
 			animations: {
@@ -144,90 +176,120 @@
 
 		/*player = new createjs.Shape();
 		player.graphics.beginFill("magenta").drawCircle(0, 0, 10); */
-		player = new createjs.Sprite(char_ss);
-		player.gotoAndStop(0);
+		me = new createjs.Sprite(char_ss);
+		me.gotoAndStop(0);
 		
-		player.x = 135;
-		player.y = 135;
-		player.name == "player";
+		me.x = 135;
+		me.y = 135;
+		me.name == "player";
 		
 		// add the player to the stage at index 1 (so it's always above the map)
-		stage.addChildAt(player, 1);
+		stage.addChildAt(me, 1);
 		
 		charLoadStatus = true;
 		console.log('Player loaded');
 		loadingComplete();
 	}
 	
-	function handleKeyPress(key_pressed, event) {
-		movePlayer(key_pressed, event.delta);
-		if (player_direction != key_pressed) {
-			player.gotoAndPlay(key_pressed);
-			player_direction = key_pressed;
+	function newPlayer(name, position) {
+		var new_player = new createjs.Sprite(char_ss);
+		new_player.gotoAndStop(0);
+		
+		new_player.x = position.x;
+		new_player.y = position.y;
+		new_player.name == "player";
+		stage.addChildAt(new_player, 1);
+		
+		return new_player;
+	}
+	
+	function handleMyKeyPress(key_pressed, event) {
+	
+		socket.emit('key', {dir: key_pressed, delta: event.delta, x: me.x, y: me.y});
+	
+		movePlayer(me, key_pressed, event.delta);
+		if (my_direction != key_pressed) {
+			me.gotoAndPlay(key_pressed);
+			my_direction = key_pressed;
 		}
 		return;
+	}
+	
+	function handleOthersKeyPress(id, direction, key_pressed, delta) {
+		var player = other_players[id]['object'];
+		movePlayer(player, key_pressed, delta);
+		if (direction != key_pressed) {
+			player.gotoAndPlay(key_pressed);
+		}
+		if (key_pressed == 'none') {
+			player.stop();
+		}
 	}
 
 	function tick(event) {
 		
+		
 		if (key.isPressed('up') || key.isPressed('w')) {
-			handleKeyPress('up', event);
+			handleMyKeyPress('up', event);
 		}
 		else if (key.isPressed('down') || key.isPressed('s')) {
-			handleKeyPress('down', event);
+			handleMyKeyPress('down', event);
 		}
 		else if (key.isPressed('left') || key.isPressed('a')) {
-			handleKeyPress('left', event);
+			handleMyKeyPress('left', event);
 		}
 		else if (key.isPressed('right') || key.isPressed('d')) {
-			handleKeyPress('right', event);
-		} 
-		else {
-			player.stop();
-			player_direction = 'none';
+			handleMyKeyPress('right', event);
+		} else {
+			me.stop();
+			if (my_direction != 'none') {
+				socket.emit('key', {dir: 'none', delta: event.delta, position: {x: me.x, y: me.y}});
+				my_direction = 'none';
+			}
 		}
+		
 		stage.update(event);
 	}
 
-	function movePlayer(dir, delta) {
+	function movePlayer(p, dir, delta) {
 		// look at the direction, and for each case, treat accordingly
 		switch(dir) {
 			case 'up':
 				// np = "new position" -- what are the new coordinates of the player going to be, if we allow them to continue moving in this direction?
 
-				var np_x = player.x; // x will not change when we move up or down
-				var np_y = player.y - (delta * PLAYER_SPEED); 
+				var np_x = p.x; // x will not change when we move up or down
+				var np_y = p.y - (delta * PLAYER_SPEED); 
 				
 				if (!collision(np_x, np_y)) { 
-					player.y = np_y; // allow this movement to happen
+					p.y = np_y; // allow this movement to happen
 				}
 				
 				 
 				break; // we're done with this case
 			case 'down':
-				var np_x = player.x;
-				var np_y = player.y + (delta * PLAYER_SPEED);
+				var np_x = p.x;
+				var np_y = p.y + (delta * PLAYER_SPEED);
 				
 				if (!collision(np_x, np_y)) {
-					player.y = np_y;
+					p.y = np_y;
 				}
 				
 				break;
 			case 'left':
-				var np_x = player.x - (delta * PLAYER_SPEED);
-				var np_y = player.y;
+				var np_x = p.x - (delta * PLAYER_SPEED);
+				var np_y = p.y;
 				
 				if (!collision(np_x, np_y)) {
-					player.x = np_x;
+					p.x = np_x;
 				}
 
 				break;
 			case 'right':
-				var np_x = player.x + (delta * PLAYER_SPEED);
-				var np_y = player.y;
+				var np_x = p.x + (delta * PLAYER_SPEED);
+				var np_y = p.y;
 				
 				if (!collision(np_x, np_y)) {
-					player.x = np_x;
+					p.x = np_x;
 				}
 				
 				break;
@@ -245,6 +307,7 @@
 		
 		// Of the returned tiles, choose the last one that isn't the player.
 		var tile = tiles[0];
+		var tile_found = false;
 		for (var t = 0; t < tiles.length; t++) {
 			if (tile.name != "player") {
 				tile = tiles[t];
