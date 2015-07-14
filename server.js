@@ -62,7 +62,7 @@ function brownPlants() {
 	if (plant) {
 		io.emit('brown-plant', {position: plant});
 	}
-	setTimeout(brownPlants, (Math.random()*5000)+4000);	
+	setTimeout(brownPlants, (Math.random()*4000)+1000);	
 }
 
 brownPlants();
