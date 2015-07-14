@@ -1,0 +1,26 @@
+{
+  "name": "cosmos-ucsc-2015",
+  "version": "0.0.1",
+  "description": "A sample Node.js app using Express 4",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "socket": "^2.1.0",
+    "express": "~4.9.x"
+  },
+  "engines": {
+    "node": "0.12.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jpwright/cosmos-drought-game"
+  },
+  "keywords": [
+    "node",
+    "heroku",
+    "express"
+  ],
+  "license": "MIT"
+}

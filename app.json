@@ -1,0 +1,7 @@
+{
+  "name": "COSMOS UCSC 2015",
+  "description": "COSMOS Drought Game",
+  "repository": "https://github.com/jpwright/cosmos-drought-game",
+  "logo": "http://node-js-sample.herokuapp.com/node.svg",
+  "keywords": ["node", "express", "static"]
+}

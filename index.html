@@ -7,16 +7,22 @@
 	<script src="js/easeljs-0.8.1.min.js"></script>
 	<script src="js/keymaster.js"></script>
 	<script src="/socket.io/socket.io.js"></script>
+	<script src="js/jquery-2.1.4.min.js"></script>
 	<!--<script src="js/main.js"></script>-->
 	<script>
 
 	var stage;
 	var text;
 	
-	var char_ss;
+	var char_ss = {};
+	var char_ss_loaded = 0;
 	var me;
+	var my_sprite;
 	var my_id;
+	var my_color;
 	var my_direction;
+	var my_name = 'Me';
+	var my_name_label;
 	
 	var other_players = {};
 	
@@ -27,6 +33,8 @@
 	var charLoadStatus = false;
 	
 	var socket;
+	
+	var NUM_CHAR_SPRITESHEETS = 3;
 	
 	var PLAYER_SPEED = 0.1;
 	var TILE_DIMENSION = 32; // Width and height of each tile.
@@ -42,9 +50,17 @@
 		image.onload = loadMap; // as soon as the image loads, call handleLoad function
 		image.src = "assets/tmw_desert_spacing.png";
 
-		var char_image = new Image();
-		char_image.onload = loadPlayer;
-		char_image.src = "assets/animated_sprite_sheet.png"; 
+		var char_image1 = new Image();
+		char_image1.onload = loadSpritesheet;
+		char_image1.src = "assets/animated_sprite_sheet1.png"; 
+		
+		var char_image2 = new Image();
+		char_image2.onload = loadSpritesheet;
+		char_image2.src = "assets/animated_sprite_sheet2.png"; 
+		
+		var char_image3 = new Image();
+		char_image3.onload = loadSpritesheet;
+		char_image3.src = "assets/animated_sprite_sheet3.png"; 
 
 		// define some text
 		text = new createjs.Text("GAME!!", "20px Arial", "#FFFFFF");
@@ -53,30 +69,14 @@
 		//text.textBaseline = "top";
 		stage.addChild(text);
 		
-		// nodejs socket initialization
-		socket = io();
-		socket.on('your-id', function(msg) {
-			console.log('my unique id is '+msg['id']);
-			my_id = msg['id'];
-		});
-		socket.on('existing-player', function(msg) {
-			console.log('existing player with id '+msg['id']);
-			var new_player = newPlayer(msg['name'], msg.position);
-			other_players[msg['id']] = {name: msg['name'], key: 'none', direction: 'none', object: new_player};
-		});
-		socket.on('new-player', function(msg) {
-			if (msg['id'] != my_id) {
-				console.log('new player with id '+msg['id']);
-				var new_player = newPlayer(msg['name'], msg.position);
-				other_players[msg['id']] = {name: msg['name'], key: 'none', direction: 'none', object: new_player};
-			}
-		});
-		socket.on('player-move', function(msg) {
-			if (msg['id'] != my_id) {
-				handleOthersKeyPress(msg['id'], other_players[msg['id']]['direction'], msg['dir'], msg['delta']);
-				other_players[msg['id']]['direction'] = msg['dir'];
-			}
-			
+		
+		// This happens when the user tries to submit the "Name:" form, by pressing enter.
+		$('form#username-form').submit(function(event) {
+			my_name = $('#username-input').val(); // Store my new name.
+			my_name_label.text = my_name; // Change my avatar's name label.
+			socket.emit('username', {name: my_name}); // Tell the server I've changed my name.
+			$('#username-input').blur(); // Remove focus from this form so I can play the game again.
+			event.preventDefault(); // Don't actually submit the form, i.e. don't refresh the page.
 		});
 		
 	}
@@ -88,6 +88,76 @@
 	}
 
 	function startGame() {
+	
+		// nodejs socket initialization
+		socket = io();
+		socket.on('your-info', function(msg) {
+			console.log('my unique id is '+msg['id']);
+			my_id = msg['id'];
+			my_color = msg['color'];
+			
+			my_sprite = new createjs.Sprite(char_ss['animated_sprite_sheet'+my_color.toString()+'.png']);
+			my_sprite.gotoAndStop(0);
+			my_sprite.name == "player";
+			
+			my_name_label = new createjs.Text(my_name, "14px Arial", "#22f");
+			my_name_label.x = 0;
+			my_name_label.y = -10;
+			
+			me = new createjs.Container();
+			me.addChild(my_sprite, my_name_label);
+			
+			me.x = 135;
+			me.y = 135;
+			
+			// add the player to the stage at index 1 (so it's always above the map)
+			stage.addChildAt(me, 1);
+		});
+		socket.on('existing-player', function(msg) {
+			console.log('existing player with id '+msg['id']);
+			var np = newPlayer(msg['name'], msg.position, msg.color);
+			other_players[msg['id']] = {name: msg['name'], color: msg['color'], key: 'none', direction: 'none', sprite: np.sprite, name_label: np.name_label, object: np.object};
+		});
+		socket.on('new-player', function(msg) {
+			if (msg['id'] != my_id) {
+				console.log('new player with id '+msg['id']);
+				var np = newPlayer(msg['name'], msg.position, msg.color);
+				other_players[msg['id']] = {name: msg['name'], color: msg['color'], key: 'none', direction: 'none', sprite: np.sprite, name_label: np.name_label, object: np.object};
+			}
+		});
+		
+		socket.on('player-left', function(msg) {
+			var player_id = msg.id;
+			console.log('player '+player_id+' left the game');
+			stage.removeChild(other_players[player_id].object);
+			delete other_players[player_id];
+		});
+			
+		
+		socket.on('player-move', function(msg) {
+			if (msg['id'] != my_id) {
+				handleOthersKeyPress(msg['id'], other_players[msg['id']]['direction'], msg['dir'], msg['delta']);
+				other_players[msg['id']]['direction'] = msg['dir'];
+			}
+			
+		});
+		
+		socket.on('green-plant', function(msg) {
+			greenPlant(msg.position.x, msg.position.y);
+		});
+		
+		socket.on('brown-plant', function(msg) {
+			brownPlant(msg.position.x, msg.position.y);
+		});
+		
+		socket.on('username', function(msg) {
+			if (msg['id'] != my_id) {
+				other_players[msg.id].name = msg.name;
+				other_players[msg.id].name_label.text = msg.name;
+			}
+		});
+		
+	
 		// update the stage to draw to screen: (think of this as a "draw" function)
 		stage.update();
 
@@ -95,7 +165,7 @@
 		createjs.Ticker.on("tick", tick);
 		createjs.Ticker.setFPS(24);
 
-		brownPlants();
+		//brownPlants();
 	}
 	
 	function loadMap(evt) {
@@ -160,8 +230,8 @@
 
 	}
 
-	function loadPlayer(evt) {
-		char_ss = new createjs.SpriteSheet({
+	function loadSpritesheet(evt) {
+		var ss = new createjs.SpriteSheet({
 			images: [evt.target],
 			frames: {width:PLAYER_DIMENSION, height:PLAYER_DIMENSION, regX:0, regY:0, spacing:0, margin:0},
 			animations: {
@@ -171,36 +241,45 @@
 				right:[15,19,'right',0.5]
 			}
 		});
-
-		// define the player
-
-		/*player = new createjs.Shape();
-		player.graphics.beginFill("magenta").drawCircle(0, 0, 10); */
-		me = new createjs.Sprite(char_ss);
-		me.gotoAndStop(0);
 		
-		me.x = 135;
-		me.y = 135;
-		me.name == "player";
+		//console.log(evt);
+		var filename = evt.path[0].currentSrc.split("/").pop();
+		char_ss[filename] = ss;
 		
-		// add the player to the stage at index 1 (so it's always above the map)
-		stage.addChildAt(me, 1);
+		console.log('Spritesheet loaded');
 		
-		charLoadStatus = true;
-		console.log('Player loaded');
-		loadingComplete();
+		if (Object.keys(char_ss).length == NUM_CHAR_SPRITESHEETS) {
+			charLoadStatus = true;
+			console.log('Player spritesheets loaded');
+			loadingComplete();
+		}
+		
 	}
 	
-	function newPlayer(name, position) {
-		var new_player = new createjs.Sprite(char_ss);
-		new_player.gotoAndStop(0);
+	function newPlayer(name, position, color) {
+		var ss_name = 'animated_sprite_sheet'+color.toString()+'.png';
+		console.log('using spritesheet '+ss_name);
+		var np_sprite = new createjs.Sprite(char_ss[ss_name]);
+		np_sprite.gotoAndStop(0);
+		np_sprite.name == "player";
 		
-		new_player.x = position.x;
-		new_player.y = position.y;
-		new_player.name == "player";
-		stage.addChildAt(new_player, 1);
+		var np_object = new createjs.Container();
+		np_object.addChild(np_sprite);
 		
-		return new_player;
+		var t = new createjs.Text(name, "14px Arial", "#000");
+		t.x = 0;
+		t.y = -10;
+		
+		np_object.addChild(t);
+		
+		np_object.x = position.x;
+		np_object.y = position.y;
+		
+		stage.addChildAt(np_object, 1);
+		
+		var np = {sprite: np_sprite, object: np_object, name_label: t};
+		
+		return np;
 	}
 	
 	function handleMyKeyPress(key_pressed, event) {
@@ -209,20 +288,21 @@
 	
 		movePlayer(me, key_pressed, event.delta);
 		if (my_direction != key_pressed) {
-			me.gotoAndPlay(key_pressed);
+			my_sprite.gotoAndPlay(key_pressed);
 			my_direction = key_pressed;
 		}
 		return;
 	}
 	
 	function handleOthersKeyPress(id, direction, key_pressed, delta) {
-		var player = other_players[id]['object'];
-		movePlayer(player, key_pressed, delta);
+		var player_object = other_players[id].object;
+		var player_sprite = other_players[id].sprite;
+		movePlayer(player_object, key_pressed, delta);
 		if (direction != key_pressed) {
-			player.gotoAndPlay(key_pressed);
+			player_sprite.gotoAndPlay(key_pressed);
 		}
 		if (key_pressed == 'none') {
-			player.stop();
+			player_sprite.stop();
 		}
 	}
 
@@ -241,7 +321,7 @@
 		else if (key.isPressed('right') || key.isPressed('d')) {
 			handleMyKeyPress('right', event);
 		} else {
-			me.stop();
+			my_sprite.stop();
 			if (my_direction != 'none') {
 				socket.emit('key', {dir: 'none', delta: event.delta, position: {x: me.x, y: me.y}});
 				my_direction = 'none';
@@ -298,34 +378,58 @@
 		}
 	}
 	
-
-	function collision(new_position_x, new_position_y) {
+	function getTileAt(x, y) {
 	
-		// Get all objects under the point where the player is going.
-		// We add PLAYER_DIMENSION/2 in both x and y. This is because the player's x and y position are at his top left corner, but we want to check collisions at the midpoint.
-		var tiles = stage.getObjectsUnderPoint(new_position_x + PLAYER_DIMENSION/2, new_position_y + PLAYER_DIMENSION/2, 0);
+		var tiles = stage.getObjectsUnderPoint(x, y, 0);
+		var tile = tiles[0];
 		
 		// Of the returned tiles, choose the last one that isn't the player.
-		var tile = tiles[0];
-		var tile_found = false;
 		for (var t = 0; t < tiles.length; t++) {
 			if (tile.name != "player") {
 				tile = tiles[t];
 			}
 		}
+		
+		return tile;
+	}
+	
+	function greenPlant(x, y) {
+		var tile = getTileAt(x, y);
+		var tile_id = tile.currentFrame;
+		if (tile_id == 46) { // 46 is the small bush
+			tile.gotoAndStop(47); // when I hit the brown bush, turn it to green
+		}
+		else if (tile_id == 38) { // 38 is the large brown bush
+			tile.gotoAndStop(39);
+		}
+	}
+	
+	function brownPlant(x, y) {
+		var tile = getTileAt(x, y);
+		var tile_id = tile.currentFrame;
+		if (tile_id == 47) { // 46 is the small bush
+			tile.gotoAndStop(46); // when I hit the green bush, turn it to brown
+		}
+		else if (tile_id == 39) { // 38 is the large brown bush
+			tile.gotoAndStop(38);
+		}
+	}
+	
+
+	function collision(new_position_x, new_position_y) {
+	
+		// Get all objects under the point where the player is going.
+		// We add PLAYER_DIMENSION/2 in both x and y. This is because the player's x and y position are at his top left corner, but we want to check collisions at the midpoint.
+		var tile = getTileAt(new_position_x + PLAYER_DIMENSION/2, new_position_y + PLAYER_DIMENSION/2);
 		var tile_id = tile.currentFrame;
 		
 		
 		// If the tile we're going to hit is a wall tile...
 		if (WALL_TILES.indexOf(tile_id) != -1) {
 
-			if (tile_id == 46) { // 46 is the small bush
-				tile.gotoAndStop(47); // when I hit the brown bush, turn it to green
-				plantsQueue.push(tile);
-			}
-			else if (tile_id == 38) { // 38 is the large brown bush
-				tile.gotoAndStop(39);
-				plantsQueue.push(tile);
+			if (tile_id == 46 || tile_id == 38) { // 38 is the large brown bush
+				//greenPlant(new_position_x + PLAYER_DIMENSION/2, new_position_y + PLAYER_DIMENSION/2);
+				socket.emit('green-plant', {position: {x: new_position_x + PLAYER_DIMENSION/2, y: new_position_y + PLAYER_DIMENSION/2}});
 			}
 			return true;
 		}
@@ -335,23 +439,6 @@
 
 	}
 
-	function brownPlants() {
-		console.log("entered brown plants");
-		var plant = plantsQueue.shift();
-
-		if (plant) {
-			var plant_id = plant.currentFrame;
-			if (plant_id == 47){
-				plant.gotoAndStop(46);
-			}
-			else if (plant_id == 39) {
-				plant.gotoAndStop(38);
-			}
-		}
-		setTimeout(brownPlants, (Math.random()*5000)+10000);	
-	}
-
-
 	</script>
 
 </head>
@@ -359,6 +446,7 @@
 <body onload="init();">
 	<canvas id="testCanvas" width="800" height="415">
 	</canvas>
+	<form id="username-form">Name: <input type="text" name="username" id="username-input"></form>
 </body>
 
 </html>
